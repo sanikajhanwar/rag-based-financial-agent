@@ -5,10 +5,10 @@ import QueryInput from './components/QueryInput';
 import MessageList from './components/MessageList';
 import EmptyState from './components/EmptyState';
 import SettingsModal from './components/SettingsModal';
-import AddTickerModal from './components/AddTickerModal'; // <--- IMPORT
+import AddTickerModal from './components/AddTickerModal';
 import { Message, AppSettings } from './types';
 import { querySuggestions } from './data/mockData';
-import { X, TrendingUp } from 'lucide-react';
+import { X, TrendingUp, Lock } from 'lucide-react'; // Added Lock icon
 
 interface ChatSession {
     id: string;
@@ -41,15 +41,16 @@ function App() {
 
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  
   const [activeDocs, setActiveDocs] = useState<ActiveDoc[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isProcessing, setIsProcessing] = useState(false);
   
-  // MODAL STATES
+  // --- NEW: Focus Mode State ---
+  const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
+
   const [showRiskModal, setShowRiskModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [showAddTickerModal, setShowAddTickerModal] = useState(false); // <--- NEW STATE
+  const [showAddTickerModal, setShowAddTickerModal] = useState(false);
 
   const [settings, setSettings] = useState<AppSettings>({
     model: 'gemini-2.0-flash',
@@ -71,48 +72,28 @@ function App() {
     }
   }, [messages, currentSessionId]);
 
-  // Replace the existing handleAddTicker function with this:
-  
-  const handleAddTicker = async (ticker: string, year: string) => {
-    const response = await fetch('http://127.0.0.1:8000/api/add_ticker', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-          ticker: ticker, 
-          year: year ? parseInt(year) : null // Send year if present
-      })
+  const handleAddTicker = (ticker: string, company: string, years: string[]) => {
+    const newDocs: ActiveDoc[] = years.map(year => ({
+        ticker: ticker,
+        name: company,
+        doc: `10-K ${year}`,
+        status: 'idle'
+    }));
+    
+    setActiveDocs(prev => {
+        const combined = [...newDocs, ...prev];
+        return combined.filter((doc, index, self) =>
+            index === self.findIndex((d) => (
+                d.ticker === doc.ticker && d.doc === doc.doc
+            ))
+        );
     });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.detail || 'Failed to add ticker');
-    }
-    
-    const data = await response.json();
-    
-    // --- CRITICAL: UPDATE UI IMMEDIATELY ---
-    // Add the new company to the Active Documents list
-    if (data.status === 'success') {
-        const newDoc: ActiveDoc = {
-            ticker: data.ticker,
-            name: data.company,
-            doc: `10-K ${data.year}`,
-            status: 'idle' // Idle until used in a chat
-        };
-        
-        setActiveDocs(prev => {
-            // Check if it already exists to avoid duplicates
-            const exists = prev.some(d => d.ticker === newDoc.ticker && d.doc === newDoc.doc);
-            if (exists) return prev;
-            return [newDoc, ...prev];
-        });
-    }
   };
 
   const handleNewChat = () => {
     setCurrentSessionId(null);
     setMessages([]);
-    setActiveDocs([]);
+    setSelectedTicker(null); // Reset filter on new chat
   };
 
   const handleLoadSession = (sessionId: string) => {
@@ -124,8 +105,6 @@ function App() {
         const lastAgentMsg = [...session.messages].reverse().find(m => m.type === 'agent');
         if (lastAgentMsg?.answer?.sources) {
             updateActiveDocs(lastAgentMsg.answer.sources);
-        } else {
-            setActiveDocs([]);
         }
     }
   };
@@ -188,21 +167,25 @@ function App() {
       thinking: {
         steps: [{
           id: 'init',
-          title: 'Initializing Agent',
-          description: 'Connecting to Python backend...',
+          title: selectedTicker ? `Context Locked: ${selectedTicker}` : 'Initializing Agent',
+          description: selectedTicker ? 'Restricting search to selected company...' : 'Connecting to backend...',
           status: 'active',
           substeps: []
         }],
         isComplete: false
       }
     };
-    setMessages(prev => [...prev, initialAgentMessage]);
+    setMessages((prev) => [...prev, initialAgentMessage]);
 
     try {
       const response = await fetch('http://127.0.0.1:8000/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: query, settings: settings })
+        body: JSON.stringify({ 
+            query: query, 
+            settings: settings,
+            ticker: selectedTicker // <--- PASS FILTER TO BACKEND
+        })
       });
 
       if (!response.ok) throw new Error('API Request failed');
@@ -262,7 +245,7 @@ function App() {
         onExport={handleExport}
         onOpenRiskMap={() => setShowRiskModal(true)}
         onOpenSettings={() => setShowSettingsModal(true)}
-        onAddTicker={() => setShowAddTickerModal(true)} // <--- CONNECT NEW MODAL
+        onAddTicker={() => setShowAddTickerModal(true)}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -273,12 +256,34 @@ function App() {
         </div>
         <div className="border-t border-slate-800 bg-slate-900/50 backdrop-blur-sm">
           <div className="max-w-5xl mx-auto px-6 py-6">
+            
+            {/* CONTEXT PILL: Shows which company is locked */}
+            {selectedTicker && (
+                <div className="mb-3 flex items-center justify-between bg-blue-900/30 border border-blue-800 rounded-lg px-4 py-2 animate-in slide-in-from-bottom-2">
+                    <div className="flex items-center gap-2 text-blue-300 text-sm">
+                        <Lock className="w-3 h-3" />
+                        <span>Context Locked to: <strong>{selectedTicker}</strong></span>
+                    </div>
+                    <button 
+                        onClick={() => setSelectedTicker(null)}
+                        className="text-xs text-slate-400 hover:text-white hover:underline"
+                    >
+                        Clear
+                    </button>
+                </div>
+            )}
+
             <QueryInput suggestions={querySuggestions} onSubmit={handleQuerySubmit} />
           </div>
         </div>
       </div>
 
-      <RightPanel documents={activeDocs} />
+      {/* PASS PROPS TO RIGHT PANEL */}
+      <RightPanel 
+        documents={activeDocs} 
+        selectedTicker={selectedTicker}
+        onSelectTicker={setSelectedTicker}
+      />
 
       <SettingsModal 
         isOpen={showSettingsModal} 
@@ -287,11 +292,10 @@ function App() {
         onSave={setSettings}
       />
 
-      {/* NEW TICKER MODAL */}
       <AddTickerModal
         isOpen={showAddTickerModal}
         onClose={() => setShowAddTickerModal(false)}
-        onAddTicker={handleAddTicker}
+        onTickerAdded={handleAddTicker}
       />
 
       {showRiskModal && (

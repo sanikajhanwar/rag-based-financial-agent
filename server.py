@@ -26,6 +26,7 @@ class AppSettings(BaseModel):
 class QueryRequest(BaseModel):
     query: str
     settings: AppSettings
+    ticker: Optional[str] = None # <--- NEW: Optional filter
 
 class SourceCard(BaseModel):
     id: str
@@ -41,18 +42,18 @@ class AgentResponse(BaseModel):
     thinking: dict
     answer: dict
 
-# NEW: Updated to accept year
 class TickerRequest(BaseModel):
     ticker: str
-    year: Optional[int] = None # Optional
+    depth: int = 1 # Default to 1 year
 
 # --- ENDPOINT 1: Analyze Questions ---
 @app.post("/api/analyze", response_model=AgentResponse)
 async def analyze_query(request: QueryRequest):
     user_query = request.query
     settings = request.settings
+    target_ticker = request.ticker # <--- Get the filter
     
-    print(f"📥 Received Query: {user_query}")
+    print(f"📥 Received Query: {user_query} (Filter: {target_ticker or 'None'})")
     
     steps = []
     steps.append({"id": "1", "title": "Query Decomposition", "description": "Breaking down query", "status": "complete", "substeps": []})
@@ -64,9 +65,12 @@ async def analyze_query(request: QueryRequest):
     sources_list = []
     
     for q in sub_queries:
-        raw_result, metadatas = agent.query_vector_db(q, n_results=settings.searchDepth)
-        all_findings.append(f"--- Results for '{q}' ---\n{raw_result}\n")
-        steps[1]["substeps"].append(f"Executed search: {q}")
+        # PASS THE FILTER TO THE AGENT
+        raw_result, metadatas = agent.query_vector_db(
+            q, 
+            n_results=settings.searchDepth, 
+            ticker_filter=target_ticker # <--- APPLY IT HERE
+        )
         
         for meta in metadatas:
             sources_list.append(SourceCard(
@@ -103,16 +107,21 @@ async def analyze_query(request: QueryRequest):
     }
 
 # --- UPDATED ADD TICKER ENDPOINT ---
+# 1. UPDATE THE MODEL
+class TickerRequest(BaseModel):
+    ticker: str
+    depth: int = 1 # Default to 1 year
+
+# 2. UPDATE THE ENDPOINT
 @app.post("/api/add_ticker")
 async def add_ticker(request: TickerRequest):
     ticker = request.ticker.upper()
-    year = request.year
+    depth = request.depth
     
-    print(f"📥 Request to add ticker: {ticker} (Year: {year or 'Latest'})")
+    print(f"📥 Request to add ticker: {ticker} (Depth: {depth})")
     
-    # Return a streaming response that yields data from indexer
     return StreamingResponse(
-        indexer.process_ticker_stream(ticker, target_year=year),
+        indexer.process_ticker_stream(ticker, depth=depth),
         media_type="application/x-ndjson"
     )
     

@@ -6,10 +6,9 @@ import re
 
 # --- CONFIGURATION ---
 # PASTE YOUR API KEY HERE
-GOOGLE_API_KEY = "AIzaSyA0j-TWhhay7rmclCP5_Xbfyec0XUFTHCE" 
+GOOGLE_API_KEY = "AIzaSyAeFmaggs0ptEJhbR4luMgC3O15TTTrlKg"
 genai.configure(api_key=GOOGLE_API_KEY)
 
-# Reuse the Embedding Function
 class GeminiEmbeddingFunction(chromadb.EmbeddingFunction):
     def __call__(self, input):
         response = genai.embed_content(
@@ -20,16 +19,25 @@ class GeminiEmbeddingFunction(chromadb.EmbeddingFunction):
         return response['embedding']
 
 # --- TOOL: SEARCH DATABASE ---
-def query_vector_db(query_text, n_results=3):
+def query_vector_db(query_text, n_results=3, ticker_filter=None):
     """
-    Searches the database.
-    n_results: Controlled by the 'Search Depth' slider in UI.
+    ticker_filter: (str) Optional. If provided (e.g. 'TSLA'), restricts search.
     """
     chroma_client = chromadb.PersistentClient(path="chroma_db")
     gemini_ef = GeminiEmbeddingFunction()
     collection = chroma_client.get_collection(name="financial_filings", embedding_function=gemini_ef)
     
-    results = collection.query(query_texts=[query_text], n_results=n_results)
+    # Construct the 'where' clause for ChromaDB
+    where_clause = None
+    if ticker_filter:
+        # This tells Chroma: "Only look at chunks where metadata['company'] == ticker_filter"
+        where_clause = {"company": ticker_filter}
+    
+    results = collection.query(
+        query_texts=[query_text], 
+        n_results=n_results,
+        where=where_clause # <--- APPLY FILTER
+    )
     
     documents = results['documents'][0]
     metadatas = results['metadatas'][0]
@@ -45,10 +53,6 @@ def query_vector_db(query_text, n_results=3):
 
 # --- STEP 1: DECOMPOSITION ---
 def get_sub_queries(original_query, model_name='gemini-2.0-flash'):
-    """
-    Breaks down the query. Model is chosen by UI.
-    """
-    # Handle model names properly (remove 'models/' if present)
     clean_model = model_name.replace("models/", "")
     model = genai.GenerativeModel(clean_model)
     
@@ -60,11 +64,11 @@ def get_sub_queries(original_query, model_name='gemini-2.0-flash'):
     
     Rules:
     1. If the question is simple, return just that one query.
-    2. If the question is complex (e.g. Compare X and Y), break it into steps.
+    2. If the question is complex, break it into steps.
     3. Return the output STRICTLY as a JSON list of strings. No markdown.
     
-    Example Input: "Compare Microsoft and Google revenue in 2023"
-    Example Output: ["Microsoft revenue 2023", "Google revenue 2023"]
+    Example Input: "Compare Microsoft and Google revenue"
+    Example Output: ["Microsoft revenue", "Google revenue"]
     """
     
     try:
@@ -78,17 +82,8 @@ def get_sub_queries(original_query, model_name='gemini-2.0-flash'):
 
 # --- STEP 2: SYNTHESIS ---
 def synthesize_answer(original_query, research_data, model_name='gemini-2.0-flash', creativity=0.1):
-    """
-    Generates the final answer.
-    creativity: Controlled by the 'Creativity' slider (Temperature).
-    """
     clean_model = model_name.replace("models/", "")
-    
-    # Configure generation config with temperature
-    generation_config = genai.types.GenerationConfig(
-        temperature=creativity
-    )
-    
+    generation_config = genai.types.GenerationConfig(temperature=creativity)
     model = genai.GenerativeModel(clean_model)
     
     prompt = f"""

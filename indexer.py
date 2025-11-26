@@ -1,14 +1,15 @@
 import requests
 import os
-import time
 import json
+import time  # <--- THIS WAS MISSING
 from bs4 import BeautifulSoup
 import chromadb
 import google.generativeai as genai
 from chromadb.utils import embedding_functions
 
 # --- CONFIGURATION ---
-GOOGLE_API_KEY = "AIzaSyA0j-TWhhay7rmclCP5_Xbfyec0XUFTHCE"
+# PASTE YOUR API KEY HERE
+GOOGLE_API_KEY = "AIzaSyAeFmaggs0ptEJhbR4luMgC3O15TTTrlKg"
 genai.configure(api_key=GOOGLE_API_KEY)
 
 HEADERS = {
@@ -57,11 +58,11 @@ def get_cik(ticker):
         return None, None
 
 # --- MAIN STREAMING LOGIC ---
-def process_ticker_stream(ticker, target_year=None):
+def process_ticker_stream(ticker, depth=1):
     """
-    Yields JSON strings to report progress.
+    depth: (int) Number of years to go back (1, 3, or 5).
     """
-    yield json.dumps({"type": "log", "message": f"🚀 Starting search for {ticker}..."}) + "\n"
+    yield json.dumps({"type": "log", "message": f"🚀 Starting search for {ticker} (Last {depth} years)..."}) + "\n"
     
     # 1. Get CIK
     cik, company_name = get_cik(ticker)
@@ -78,73 +79,67 @@ def process_ticker_stream(ticker, target_year=None):
         data = response.json()
         filings = data['filings']['recent']
         
-        target_accession = None
-        target_doc = None
-        found_year = None
+        found_count = 0
+        processed_years = []
 
-        yield json.dumps({"type": "log", "message": f"🔍 Scanning filings for {target_year or 'latest'} 10-K..."}) + "\n"
-
+        # Loop through filings
         for i, form in enumerate(filings['form']):
             if form == '10-K':
                 date = filings['filingDate'][i]
                 filing_year = int(date.split("-")[0])
                 
-                if target_year:
-                    if filing_year == int(target_year):
-                        target_accession = filings['accessionNumber'][i]
-                        target_doc = filings['primaryDocument'][i]
-                        found_year = filing_year
-                        break
+                # Prevent duplicates if re-running
+                if str(filing_year) in processed_years:
+                    continue
+
+                # PROCESSING LOGIC
+                accession = filings['accessionNumber'][i]
+                primary_doc = filings['primaryDocument'][i]
+                
+                yield json.dumps({"type": "log", "message": f"⬇️ Downloading 10-K for {filing_year}..."}) + "\n"
+                
+                # Download
+                accession_no_hyphen = accession.replace("-", "")
+                dl_url = f"https://www.sec.gov/Archives/edgar/data/{cik.lstrip('0')}/{accession_no_hyphen}/{primary_doc}"
+                dl_headers = {"User-Agent": "StudentProject contact@bennett.edu.in", "Host": "www.sec.gov"}
+                
+                dl_response = requests.get(dl_url, headers=dl_headers)
+                if dl_response.status_code == 200:
+                    # Index
+                    clean_text = clean_html(dl_response.content)
+                    chunks = chunk_text(clean_text)
+                    yield json.dumps({"type": "log", "message": f"   -> Indexing {len(chunks)} chunks for {filing_year}..."}) + "\n"
+                    
+                    chroma_client = chromadb.PersistentClient(path="chroma_db")
+                    gemini_ef = GeminiEmbeddingFunction()
+                    collection = chroma_client.get_or_create_collection(name="financial_filings", embedding_function=gemini_ef)
+                    
+                    ids = [f"{ticker}_{filing_year}_{j}" for j in range(len(chunks))]
+                    metadatas = [{"company": ticker, "year": str(filing_year), "source": "Live Fetch"} for _ in chunks]
+                    collection.add(documents=chunks, ids=ids, metadatas=metadatas)
+                    
+                    processed_years.append(str(filing_year))
+                    found_count += 1
+                    
+                    # Add delay to be polite to SEC
+                    time.sleep(0.5)
                 else:
-                    target_accession = filings['accessionNumber'][i]
-                    target_doc = filings['primaryDocument'][i]
-                    found_year = filing_year
-                    break
-        
-        if not target_accession:
-            yield json.dumps({"type": "error", "message": f"No 10-K found for {target_year or 'latest'}"}) + "\n"
-            return
+                    yield json.dumps({"type": "log", "message": f"⚠️ Failed to download {filing_year}"}) + "\n"
 
-        # 3. Download
-        yield json.dumps({"type": "log", "message": f"⬇️ Downloading 10-K for {found_year}..."}) + "\n"
+            # Stop if we hit the depth target
+            if found_count >= depth:
+                break
         
-        accession_no_hyphen = target_accession.replace("-", "")
-        dl_url = f"https://www.sec.gov/Archives/edgar/data/{cik.lstrip('0')}/{accession_no_hyphen}/{target_doc}"
-        
-        dl_headers = {"User-Agent": "StudentProject contact@bennett.edu.in", "Host": "www.sec.gov"}
-        dl_response = requests.get(dl_url, headers=dl_headers)
-        
-        if dl_response.status_code != 200:
-            yield json.dumps({"type": "error", "message": "Failed to download file from SEC"}) + "\n"
-            return
-
-        # 4. Process & Index
-        yield json.dumps({"type": "log", "message": "📄 Parsing HTML and extracting text..."}) + "\n"
-        clean_text = clean_html(dl_response.content)
-        
-        yield json.dumps({"type": "log", "message": "✂️ Splitting text into semantic chunks..."}) + "\n"
-        chunks = chunk_text(clean_text)
-        yield json.dumps({"type": "log", "message": f"   -> Generated {len(chunks)} chunks"}) + "\n"
-
-        # 5. Add to ChromaDB
-        yield json.dumps({"type": "log", "message": "🧠 Generating embeddings & indexing (this takes a moment)..."}) + "\n"
-        
-        chroma_client = chromadb.PersistentClient(path="chroma_db")
-        gemini_ef = GeminiEmbeddingFunction()
-        collection = chroma_client.get_or_create_collection(name="financial_filings", embedding_function=gemini_ef)
-        
-        ids = [f"{ticker}_{found_year}_{i}" for i in range(len(chunks))]
-        metadatas = [{"company": ticker, "year": str(found_year), "source": "Live Fetch"} for _ in chunks]
-        
-        collection.add(documents=chunks, ids=ids, metadatas=metadatas)
-        
-        yield json.dumps({
-            "type": "success", 
-            "message": f"Successfully indexed {ticker} ({found_year})",
-            "ticker": ticker,
-            "year": found_year,
-            "company": company_name
-        }) + "\n"
+        if found_count == 0:
+            yield json.dumps({"type": "error", "message": "No 10-K filings found."}) + "\n"
+        else:
+            yield json.dumps({
+                "type": "success", 
+                "message": f"Successfully indexed {found_count} reports for {ticker}.",
+                "ticker": ticker,
+                "years": processed_years, # Return list of years
+                "company": company_name
+            }) + "\n"
 
     except Exception as e:
         yield json.dumps({"type": "error", "message": str(e)}) + "\n"

@@ -1,19 +1,18 @@
-import { X, Plus, Download, CheckCircle, AlertCircle, Loader2, Terminal } from 'lucide-react';
+import { X, Plus, Download, Loader2, Terminal, Layers } from 'lucide-react';
 import { useState, useRef } from 'react';
 
 interface AddTickerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddTicker: (ticker: string, year: string) => void; // Changed return type to void as we handle logic here
+  onTickerAdded: (ticker: string, company: string, years: string[]) => void;
 }
 
-export default function AddTickerModal({ isOpen, onClose, onAddTicker }: AddTickerModalProps) {
+export default function AddTickerModal({ isOpen, onClose, onTickerAdded }: AddTickerModalProps) {
   const [ticker, setTicker] = useState('');
-  const [year, setYear] = useState('');
+  const [depth, setDepth] = useState('1');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [logs, setLogs] = useState<string[]>([]);
   
-  // Ref to auto-scroll logs
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   if (!isOpen) return null;
@@ -23,7 +22,7 @@ export default function AddTickerModal({ isOpen, onClose, onAddTicker }: AddTick
     if (!ticker.trim()) return;
 
     setStatus('loading');
-    setLogs(['Initializing connection...']);
+    setLogs([`Initializing multi-year search (${depth} years)...`]);
 
     try {
       const response = await fetch('http://127.0.0.1:8000/api/add_ticker', {
@@ -31,14 +30,13 @@ export default function AddTickerModal({ isOpen, onClose, onAddTicker }: AddTick
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
             ticker: ticker, 
-            year: year ? parseInt(year) : null 
+            depth: parseInt(depth)
         })
       });
 
       if (!response.ok) throw new Error('Connection failed');
       if (!response.body) throw new Error('No response body');
 
-      // --- STREAM READER LOGIC ---
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       
@@ -59,16 +57,15 @@ export default function AddTickerModal({ isOpen, onClose, onAddTicker }: AddTick
                 } else if (data.type === 'success') {
                     setStatus('success');
                     setLogs(prev => [...prev, '✨ ' + data.message]);
-                    // Wait 2s then update App state
+                    
+                    onTickerAdded(data.ticker, data.company, data.years || []);
+
                     setTimeout(() => {
                         onClose();
                         setStatus('idle');
                         setLogs([]);
                         setTicker('');
-                        setYear('');
-                        // This refresh is handled by the parent refreshing Active Docs, 
-                        // or you can force a refresh here if needed.
-                        window.location.reload(); // Simple way to refresh doc list
+                        setDepth('1');
                     }, 2000);
                 } else if (data.type === 'error') {
                     setStatus('error');
@@ -108,7 +105,7 @@ export default function AddTickerModal({ isOpen, onClose, onAddTicker }: AddTick
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           
           <div className="space-y-4">
-            {/* Inputs */}
+            {/* Ticker Input */}
             <div>
                 <label className="text-sm font-medium text-slate-300 block mb-1">Company Ticker</label>
                 <input
@@ -120,16 +117,29 @@ export default function AddTickerModal({ isOpen, onClose, onAddTicker }: AddTick
                     disabled={status === 'loading'}
                 />
             </div>
+
+            {/* Depth Dropdown */}
             <div>
-                <label className="text-sm font-medium text-slate-300 block mb-1">Year (Optional)</label>
-                <input
-                    type="number"
-                    value={year}
-                    onChange={(e) => setYear(e.target.value)}
-                    placeholder="e.g. 2022"
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                <label className="text-sm font-medium text-slate-300 block mb-1 flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-blue-400" />
+                    Analysis Depth
+                </label>
+                {/* FIX: Added aria-label and title */}
+                <select
+                    value={depth}
+                    onChange={(e) => setDepth(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
                     disabled={status === 'loading'}
-                />
+                    aria-label="Select analysis depth"
+                    title="Select analysis depth"
+                >
+                    <option value="1">Latest 10-K (Quick)</option>
+                    <option value="3">Last 3 Years (Trend Analysis)</option>
+                    <option value="5">Last 5 Years (Deep Dive)</option>
+                </select>
+                <p className="text-xs text-slate-500 mt-1 ml-1">
+                    "Trend Analysis" allows questions like "How did revenue change since 2021?"
+                </p>
             </div>
 
             <button
@@ -142,7 +152,7 @@ export default function AddTickerModal({ isOpen, onClose, onAddTicker }: AddTick
             </button>
           </div>
 
-          {/* LIVE LOGS TERMINAL */}
+          {/* LIVE LOGS */}
           {(status === 'loading' || logs.length > 0) && (
             <div className="bg-black/50 border border-slate-800 rounded-lg p-4 font-mono text-xs h-48 overflow-y-auto flex flex-col-reverse">
                 <div ref={logsEndRef} />
