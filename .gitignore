@@ -1,0 +1,19 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Data & Database (Too big for git)
+data/
+chroma_db/
+
+# Environment Variables (Protect API Keys)
+.env
+
+# Javascript / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+
+# OS junk
+.DS_Store
