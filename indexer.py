@@ -9,7 +9,7 @@ from chromadb.utils import embedding_functions
 
 # --- CONFIGURATION ---
 # PASTE YOUR API KEY HERE
-GOOGLE_API_KEY = "AIzaSyAeFmaggs0ptEJhbR4luMgC3O15TTTrlKg"
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 genai.configure(api_key=GOOGLE_API_KEY)
 
 HEADERS = {
