@@ -133,11 +133,10 @@ def process_ticker_stream(ticker, depth=1):
                         })
 
                     # --- FIX: BATCHING TO PREVENT API CRASHES ---
-                    BATCH_SIZE = 20 # Process 20 chunks at a time
+                    BATCH_SIZE = 5  # <--- REDUCED from 20 to 5
                     total_batches = (len(chunks) + BATCH_SIZE - 1) // BATCH_SIZE
                     
                     for i in range(0, len(chunks), BATCH_SIZE):
-                        # Slice the data
                         batch_chunks = chunks[i : i + BATCH_SIZE]
                         batch_ids = ids[i : i + BATCH_SIZE]
                         batch_meta = metadatas[i : i + BATCH_SIZE]
@@ -150,7 +149,7 @@ def process_ticker_stream(ticker, depth=1):
                         yield json.dumps({"type": "log", "message": f"   -> Indexed batch {current_batch}/{total_batches}..."}) + "\n"
                         
                         # Sleep to be polite to the API limit
-                        time.sleep(0.5) 
+                        time.sleep(2.0) 
                     
                     processed_years.append(str(filing_year))
                     found_count += 1
