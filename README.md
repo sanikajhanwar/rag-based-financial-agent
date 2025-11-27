@@ -84,25 +84,25 @@ Visit http://localhost:5173 to start analyzing!
 ## 📸 Capabilities Guide
 1. Adding Knowledge (Live Trend Analysis)
 
-*Click "Add Company" in the sidebar.
+* Click "Add Company" in the sidebar.
 
-*Enter a Ticker (e.g., TSLA) and select "Last 3 Years".
+* Enter a Ticker (e.g., TSLA) and select "Last 3 Years".
 
-*Watch the terminal output as it scrapes 2023, 2022, and 2021 reports live.
+* Watch the terminal output as it scrapes 2023, 2022, and 2021 reports live.
 
 2. Comparative Analysis
 
-*User: "Compare the revenue growth of Tesla and Ford from 2021 to 2023."
+* User: "Compare the revenue growth of Tesla and Ford from 2021 to 2023."
 
-*Agent: Decomposes request -> Fetches data for both companies across all years -> Calculates growth -> Returns a formatted Markdown table.
+* Agent: Decomposes request -> Fetches data for both companies across all years -> Calculates growth -> Returns a formatted Markdown table.
 
 3. Focus Mode
 
-*Click the Tesla 10-K card in the right panel.
+* Click the Tesla 10-K card in the right panel.
 
-*The chat bar will show a "Context Locked: TSLA" badge.
+* The chat bar will show a "Context Locked: TSLA" badge.
 
-*Ask generic questions like "What are the risk factors?" and get answers specific to Tesla only.
+* Ask generic questions like "What are the risk factors?" and get answers specific to Tesla only.
 
 ## 📄 License
 MIT License. Built for educational purposes.
