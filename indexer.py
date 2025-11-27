@@ -120,21 +120,41 @@ def process_ticker_stream(ticker, depth=1):
                     gemini_ef = GeminiEmbeddingFunction()
                     collection = chroma_client.get_or_create_collection(name="financial_filings", embedding_function=gemini_ef)
                     
+                    
                     ids = [f"{ticker}_{filing_year}_{j}" for j in range(len(chunks))]
-                    # FIX: Save the first 400 characters of text as 'excerpt' for the UI
+                    
                     metadatas = []
                     for chunk in chunks:
                         metadatas.append({
                             "company": ticker, 
                             "year": str(filing_year), 
-                            "source": "Live Fetch", 
-                            "excerpt": chunk[:400] 
+                            "source": "Live Fetch",
+                            "excerpt": chunk[:400]
                         })
-                    collection.add(documents=chunks, ids=ids, metadatas=metadatas)
+
+                    # --- FIX: BATCHING TO PREVENT API CRASHES ---
+                    BATCH_SIZE = 20 # Process 20 chunks at a time
+                    total_batches = (len(chunks) + BATCH_SIZE - 1) // BATCH_SIZE
+                    
+                    for i in range(0, len(chunks), BATCH_SIZE):
+                        # Slice the data
+                        batch_chunks = chunks[i : i + BATCH_SIZE]
+                        batch_ids = ids[i : i + BATCH_SIZE]
+                        batch_meta = metadatas[i : i + BATCH_SIZE]
+                        
+                        # Add batch to DB
+                        collection.add(documents=batch_chunks, ids=batch_ids, metadatas=batch_meta)
+                        
+                        # Log progress for every batch so the user sees movement
+                        current_batch = (i // BATCH_SIZE) + 1
+                        yield json.dumps({"type": "log", "message": f"   -> Indexed batch {current_batch}/{total_batches}..."}) + "\n"
+                        
+                        # Sleep to be polite to the API limit
+                        time.sleep(0.5) 
                     
                     processed_years.append(str(filing_year))
                     found_count += 1
-                    
+                                        
                     # Add delay to be polite to SEC
                     time.sleep(0.5)
                 else:

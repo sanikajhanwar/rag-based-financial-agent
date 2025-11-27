@@ -4,8 +4,7 @@ __pycache__/
 *.pyc
 
 # Data & Database (Too big for git)
-data/
-chroma_db/
+/data/       <-- CHANGED: Added leading slash (Only ignores root data)chroma_db/
 
 # Environment Variables (Protect API Keys)
 .env
