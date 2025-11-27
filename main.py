@@ -1,6 +1,8 @@
 import chromadb
 import google.generativeai as genai
 from chromadb.utils import embedding_functions
+import os
+from dotenv import load_dotenv
 
 # --- CONFIGURATION ---
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")

@@ -1,16 +1,22 @@
 import requests
 import os
 import json
-import time  # <--- THIS WAS MISSING
+import time
 from bs4 import BeautifulSoup
 import chromadb
 import google.generativeai as genai
 from chromadb.utils import embedding_functions
+from dotenv import load_dotenv # <--- RESTORED IMPORT
 
 # --- CONFIGURATION ---
-# PASTE YOUR API KEY HERE
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-genai.configure(api_key=GOOGLE_API_KEY)
+load_dotenv() # <--- RESTORED: Load environment variables
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") # <--- RESTORED: Read from .env
+
+# Safety check
+if not GOOGLE_API_KEY:
+    print("❌ ERROR: GOOGLE_API_KEY not found. Check your .env file.")
+else:
+    genai.configure(api_key=GOOGLE_API_KEY)
 
 HEADERS = {
     "User-Agent": "StudentProject contact@bennett.edu.in",
@@ -115,7 +121,15 @@ def process_ticker_stream(ticker, depth=1):
                     collection = chroma_client.get_or_create_collection(name="financial_filings", embedding_function=gemini_ef)
                     
                     ids = [f"{ticker}_{filing_year}_{j}" for j in range(len(chunks))]
-                    metadatas = [{"company": ticker, "year": str(filing_year), "source": "Live Fetch"} for _ in chunks]
+                    # FIX: Save the first 400 characters of text as 'excerpt' for the UI
+                    metadatas = []
+                    for chunk in chunks:
+                        metadatas.append({
+                            "company": ticker, 
+                            "year": str(filing_year), 
+                            "source": "Live Fetch", 
+                            "excerpt": chunk[:400] 
+                        })
                     collection.add(documents=chunks, ids=ids, metadatas=metadatas)
                     
                     processed_years.append(str(filing_year))

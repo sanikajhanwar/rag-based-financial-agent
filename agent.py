@@ -3,9 +3,10 @@ import chromadb
 from chromadb.utils import embedding_functions
 import json
 import re
+import os
+from dotenv import load_dotenv
 
-# --- CONFIGURATION ---
-# PASTE YOUR API KEY HERE
+load_dotenv()
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 genai.configure(api_key=GOOGLE_API_KEY)
 

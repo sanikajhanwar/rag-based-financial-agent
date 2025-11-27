@@ -6,6 +6,7 @@ from fastapi.responses import StreamingResponse
 import agent 
 import indexer 
 import uuid
+import os
 
 app = FastAPI()
 
@@ -66,20 +67,26 @@ async def analyze_query(request: QueryRequest):
     
     for q in sub_queries:
         # PASS THE FILTER TO THE AGENT
-        raw_result, metadatas = agent.query_vector_db(
-            q, 
-            n_results=settings.searchDepth, 
-            ticker_filter=target_ticker # <--- APPLY IT HERE
-        )
+        raw_result, metadatas = agent.query_vector_db(q, n_results=settings.searchDepth, ticker_filter=target_ticker)
+        
+        # DEBUG PRINT: See what the agent is actually reading
+        print(f"\n--- DEBUG: Findings for '{q}' ---")
+        print(raw_result[:500] + "...\n") 
+        
+        all_findings.append(f"--- Results for '{q}' ---\n{raw_result}\n")
+        steps[1]["substeps"].append(f"Executed search: {q}")
         
         for meta in metadatas:
+            # FIX: Use the 'excerpt' we saved, fallback to 'source' if missing
+            snippet_text = meta.get('excerpt') or meta.get('source') or "No text preview available"
+            
             sources_list.append(SourceCard(
                 id=str(uuid.uuid4()),
                 ticker=meta.get('company', 'SEC'),
                 company=meta.get('company', 'Unknown'),
                 year=int(meta.get('year', 2023)),
                 docType="10-K",
-                snippet=meta.get('source', 'Text snippet...'),
+                snippet=snippet_text, # <--- Now sending real text to UI
                 page=1, 
                 confidence=0.95
             ))
