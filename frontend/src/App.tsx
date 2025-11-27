@@ -8,7 +8,8 @@ import SettingsModal from './components/SettingsModal';
 import AddTickerModal from './components/AddTickerModal';
 import { Message, AppSettings } from './types';
 import { querySuggestions } from './data/mockData';
-import { X, TrendingUp, Lock } from 'lucide-react'; // Added Lock icon
+import { X, TrendingUp, Lock } from 'lucide-react';
+import { API_URL } from './config'; // <--- IMPORT FROM CONFIG
 
 interface ChatSession {
     id: string;
@@ -45,7 +46,6 @@ function App() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isProcessing, setIsProcessing] = useState(false);
   
-  // --- NEW: Focus Mode State ---
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
 
   const [showRiskModal, setShowRiskModal] = useState(false);
@@ -93,7 +93,7 @@ function App() {
   const handleNewChat = () => {
     setCurrentSessionId(null);
     setMessages([]);
-    setSelectedTicker(null); // Reset filter on new chat
+    setSelectedTicker(null);
   };
 
   const handleLoadSession = (sessionId: string) => {
@@ -178,13 +178,14 @@ function App() {
     setMessages((prev) => [...prev, initialAgentMessage]);
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/analyze', {
+      // FIX: Use API_URL from config
+      const response = await fetch(`${API_URL}/api/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
             query: query, 
             settings: settings,
-            ticker: selectedTicker // <--- PASS FILTER TO BACKEND
+            ticker: selectedTicker
         })
       });
 
@@ -257,7 +258,6 @@ function App() {
         <div className="border-t border-slate-800 bg-slate-900/50 backdrop-blur-sm">
           <div className="max-w-5xl mx-auto px-6 py-6">
             
-            {/* CONTEXT PILL: Shows which company is locked */}
             {selectedTicker && (
                 <div className="mb-3 flex items-center justify-between bg-blue-900/30 border border-blue-800 rounded-lg px-4 py-2 animate-in slide-in-from-bottom-2">
                     <div className="flex items-center gap-2 text-blue-300 text-sm">
@@ -278,7 +278,6 @@ function App() {
         </div>
       </div>
 
-      {/* PASS PROPS TO RIGHT PANEL */}
       <RightPanel 
         documents={activeDocs} 
         selectedTicker={selectedTicker}

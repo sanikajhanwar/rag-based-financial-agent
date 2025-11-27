@@ -1,5 +1,6 @@
-import { X, Plus, Download, Loader2, Terminal, Layers } from 'lucide-react';
+import { X, Plus, Download, CheckCircle, AlertCircle, Loader2, Terminal, Layers } from 'lucide-react';
 import { useState, useRef } from 'react';
+import { API_URL } from '../config'; // <--- IMPORT CONFIG
 
 interface AddTickerModalProps {
   isOpen: boolean;
@@ -25,7 +26,8 @@ export default function AddTickerModal({ isOpen, onClose, onTickerAdded }: AddTi
     setLogs([`Initializing multi-year search (${depth} years)...`]);
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/api/add_ticker', {
+      // FIX: Use API_URL from config
+      const response = await fetch(`${API_URL}/api/add_ticker`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -105,7 +107,6 @@ export default function AddTickerModal({ isOpen, onClose, onTickerAdded }: AddTi
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           
           <div className="space-y-4">
-            {/* Ticker Input */}
             <div>
                 <label className="text-sm font-medium text-slate-300 block mb-1">Company Ticker</label>
                 <input
@@ -118,13 +119,11 @@ export default function AddTickerModal({ isOpen, onClose, onTickerAdded }: AddTi
                 />
             </div>
 
-            {/* Depth Dropdown */}
             <div>
                 <label className="text-sm font-medium text-slate-300 block mb-1 flex items-center gap-2">
                     <Layers className="w-4 h-4 text-blue-400" />
                     Analysis Depth
                 </label>
-                {/* FIX: Added aria-label and title */}
                 <select
                     value={depth}
                     onChange={(e) => setDepth(e.target.value)}
@@ -152,7 +151,6 @@ export default function AddTickerModal({ isOpen, onClose, onTickerAdded }: AddTi
             </button>
           </div>
 
-          {/* LIVE LOGS */}
           {(status === 'loading' || logs.length > 0) && (
             <div className="bg-black/50 border border-slate-800 rounded-lg p-4 font-mono text-xs h-48 overflow-y-auto flex flex-col-reverse">
                 <div ref={logsEndRef} />
